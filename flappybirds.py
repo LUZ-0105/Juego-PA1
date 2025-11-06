@@ -7,6 +7,13 @@ from sys import exit
 GAME_WIDTH = 360
 GAME_HEIGHT = 640
 
+#game imagenes 
+backgroung_image = pygame.image.load("sky.png")
+
+
+def draw(): 
+    window.blit(backgroung_image, (0, 0))
+
 pygame.init()
 window = pygame.display.set_mode((GAME_WIDTH , GAME_HEIGHT))
 pygame.display.set_caption("Flappy Bird")
@@ -18,6 +25,6 @@ while True:
             pygame.quit()
             exit()
 
+    draw()
     pygame.display.update()
     clock.tick(60)  #60 fps
-    
