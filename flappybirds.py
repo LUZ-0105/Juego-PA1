@@ -7,19 +7,20 @@ from sys import exit
 pygame.init()
 clock = pygame.time.Clock()
 
-# Pantalla
+# -------------------- Pantalla --------------------
 GAME_WIDTH = 360
 GAME_HEIGHT = 640
 window = pygame.display.set_mode((GAME_WIDTH, GAME_HEIGHT))
 pygame.display.set_caption("Flappy Bird - Modo Amarillo/Azul/Intercalado")
 
-# Estados
+# -------------------- Estados --------------------
 MENU = 0
 JUGANDO = 1
 PERDIDO = 2
 PAUSA = 3
+estado = MENU
 
-# Parámetros
+# -------------------- Parámetros --------------------
 FPS = 60
 bird_width = 34
 bird_height = 24
@@ -35,7 +36,7 @@ def cargar_record():
     try:
         with open(RECORD_FILE, "r") as f:
             return int(f.read())
-    except:
+    except Exception:
         return 0
 
 def guardar_record(score):
@@ -45,39 +46,62 @@ def guardar_record(score):
     except Exception as e:
         print("Error guardando récord:", e)
 
+record = cargar_record()
+
 # -------------------- Clases --------------------
 class Bird:
     def __init__(self, img, x, y, w, h):
-        self.rect = pygame.Rect(int(x), int(y), w, h)
         self.img = img
+        self.rect = pygame.Rect(int(x), int(y), w, h)
         self.x_float = float(x)
         self.y_float = float(y)
         self.vel_y = 0.0
+        self.angle = 0
 
     def update_rect(self):
         self.rect.x = int(self.x_float)
         self.rect.y = int(self.y_float)
 
+    def update_angle(self):
+        # ángulo proporcional a la velocidad vertical (clamp)
+        ang = -self.vel_y * 4  # ajustar sensibilidad
+        if ang > 25: ang = 25
+        if ang < -25: ang = -25
+        self.angle = ang
+
     def apply_gravity(self, gravity):
         self.vel_y += gravity
         self.y_float += self.vel_y
-        self.y_float = max(self.y_float, 0)
+        # evitar salirse por arriba
+        if self.y_float < 0:
+            self.y_float = 0
+            self.vel_y = 0
+        self.update_angle()
         self.update_rect()
 
     def jump(self, jump_speed):
         self.vel_y = jump_speed
 
     def check_boundary(self, height):
-        return self.rect.y > height
+        # devuelve True si tocó el suelo (se considera fuera)
+        return self.rect.y > height - 10
+
+    def draw(self, surface):
+        # rotar imagen alrededor del centro
+        if self.img is None:
+            return
+        rotated = pygame.transform.rotate(self.img, self.angle)
+        new_rect = rotated.get_rect(center=self.rect.center)
+        surface.blit(rotated, new_rect)
 
 class Tuberia(pygame.Rect):
     def __init__(self, img, x, y, w, h):
-        pygame.Rect.__init__(self, x, y, w, h)
+        pygame.Rect.__init__(self, int(x), int(y), int(w), int(h))
         self.img = img
         self.passed = False
 
 class Button:
-    def __init__(self, x, y, width, height, bg_color="gray", text="", font=None, text_color="white"):
+    def __init__(self, x, y, width, height, bg_color=(150,150,150), text="", font=None, text_color=(255,255,255)):
         self.rect = pygame.Rect(x, y, width, height)
         self.bg_color = bg_color
         self.text = text
@@ -86,8 +110,8 @@ class Button:
 
     def draw(self, surface):
         pygame.draw.rect(surface, self.bg_color, self.rect)
-        pygame.draw.rect(surface, "black", self.rect, 2)
-        if self.text:
+        pygame.draw.rect(surface, (0,0,0), self.rect, 2)
+        if self.text and self.font:
             text_surf = self.font.render(self.text, True, self.text_color)
             text_rect = text_surf.get_rect(center=self.rect.center)
             surface.blit(text_surf, text_rect)
@@ -97,41 +121,51 @@ class Button:
             return self.rect.collidepoint(pos)
         return False
 
-# -------------------- Recursos gráficos --------------------
-# Cargar imágenes. Si falla, el programa mostrará un error claro.
-background_image = pygame.image.load("sky.png").convert()
-tuberia_superior_image = pygame.transform.scale(pygame.image.load("tuberia_superior.png").convert_alpha(), (tuberia_width, tuberia_height))
-tuberia_inferior_image = pygame.transform.scale(pygame.image.load("tuberia_inferior.png").convert_alpha(), (tuberia_width, tuberia_height))
+# -------------------- Carga de recursos (con fallback) --------------------
+def safe_load_image(path, size=None, alpha=True):
+    try:
+        if alpha:
+            img = pygame.image.load(path).convert_alpha()
+        else:
+            img = pygame.image.load(path).convert()
+        if size:
+            img = pygame.transform.scale(img, size)
+        return img
+    except Exception:
+        # superficie de reemplazo (para no romper si falta archivo)
+        surf = pygame.Surface(size if size else (50,50), pygame.SRCALPHA)
+        surf.fill((200,0,200))
+        return surf
 
-# Cargar frames por color
+# background
+background_image = safe_load_image("sky.png", (GAME_WIDTH, GAME_HEIGHT), alpha=False)
+
+# frames por color (intenta cargar, si no existen usa sustitutos)
 frames_yellow = [
-    pygame.transform.scale(pygame.image.load("bird_yellow1.png").convert_alpha(), (bird_width, bird_height)),
-    pygame.transform.scale(pygame.image.load("bird_yellow2.png").convert_alpha(), (bird_width, bird_height)),
-    pygame.transform.scale(pygame.image.load("bird_yellow3.png").convert_alpha(), (bird_width, bird_height))
+    safe_load_image("bird_yellow1.png", (bird_width, bird_height)),
+    safe_load_image("bird_yellow2.png", (bird_width, bird_height)),
+    safe_load_image("bird_yellow3.png", (bird_width, bird_height))
 ]
-
 frames_blue = [
-    pygame.transform.scale(pygame.image.load("bird_blue1.png").convert_alpha(), (bird_width, bird_height)),
-    pygame.transform.scale(pygame.image.load("bird_blue2.png").convert_alpha(), (bird_width, bird_height)),
-    pygame.transform.scale(pygame.image.load("bird_blue3.png").convert_alpha(), (bird_width, bird_height))
+    safe_load_image("bird_blue1.png", (bird_width, bird_height)),
+    safe_load_image("bird_blue2.png", (bird_width, bird_height)),
+    safe_load_image("bird_blue3.png", (bird_width, bird_height))
 ]
 
-# -------------------- Modos de juego (selección) --------------------
-# Modo posible: "yellow" (solo amarillo), "blue" (solo azul), "intercalated" (amarillo-azul alternado)
-modo_seleccionado = "intercalated"  # valor por defecto al iniciar
+# tuberías
+tuberia_superior_image = safe_load_image("tuberia_superior.png", (tuberia_width, tuberia_height))
+tuberia_inferior_image = safe_load_image("tuberia_inferior.png", (tuberia_width, tuberia_height))
+
+# -------------------- Modos de juego --------------------
+# "yellow", "blue", "intercalated"
+modo_seleccionado = "intercalated"
 
 def construir_sprites_para_modo(modo):
-    """
-    Devuelve la lista sprites_bird (secuencia de frames) según el modo:
-    - yellow -> [y1,y2,y3]
-    - blue -> [b1,b2,b3]
-    - intercalated -> [y1,b1,y2,b2,y3,b3]
-    """
     if modo == "yellow":
-        return frames_yellow[:]  # copia
+        return frames_yellow[:]
     elif modo == "blue":
         return frames_blue[:]
-    else:  # intercalated
+    else:
         seq = []
         for i in range(len(frames_yellow)):
             seq.append(frames_yellow[i])
@@ -147,14 +181,12 @@ bird_y = GAME_HEIGHT / 2
 bird = Bird(sprites_bird[indice_sprite], bird_x, bird_y, bird_width, bird_height)
 tuberias = []
 puntuacion = 0.0
-estado = MENU
-record = cargar_record()
 
 # Timers
 temporizador_tuberias = pygame.USEREVENT + 0
 pygame.time.set_timer(temporizador_tuberias, 1500)
 ANIM_EVENT = pygame.USEREVENT + 5
-pygame.time.set_timer(ANIM_EVENT, 150)  # ms por frame de animación
+pygame.time.set_timer(ANIM_EVENT, 150)  # animación cada 150 ms
 
 # Fuentes y botones
 font_title = pygame.font.SysFont("Comic Sans MS", 40)
@@ -166,15 +198,15 @@ button_width = 150
 button_height = 50
 button_x = GAME_WIDTH // 2 - button_width // 2
 button_y = 300
-button_play = Button(button_x, button_y, button_width, button_height, "orange", "Jugar", font_button)
+button_play = Button(button_x, button_y, button_width, button_height, (255,165,0), "Jugar", font_button, (0,0,0))
 
-# Botones de selección de modo (3 botones)
+# Modo buttons
 mode_btn_w = 110
 mode_btn_h = 40
 mode_btn_y = 200
-mode_btn_yellow = Button(20, mode_btn_y, mode_btn_w, mode_btn_h, "gold", "Amarillo", font_small, "black")
-mode_btn_blue   = Button(130, mode_btn_y, mode_btn_w, mode_btn_h, "dodgerblue", "Azul", font_small, "white")
-mode_btn_inter  = Button(240, mode_btn_y, mode_btn_w, mode_btn_h, "gray", "Intercalado", font_small, "white")
+mode_btn_yellow = Button(20, mode_btn_y, mode_btn_w, mode_btn_h, (255,215,0), "Amarillo", font_small, (0,0,0))
+mode_btn_blue   = Button(130, mode_btn_y, mode_btn_w, mode_btn_h, (30,144,255), "Azul", font_small, (255,255,255))
+mode_btn_inter  = Button(240, mode_btn_y, mode_btn_w, mode_btn_h, (120,120,120), "Intercalado", font_small, (255,255,255))
 
 # -------------------- Funciones de lógica --------------------
 def reiniciar_juego():
@@ -186,10 +218,10 @@ def reiniciar_juego():
 def crear_tuberias():
     random_y = tuberia_y - tuberia_height / 4 - random.random() * (tuberia_height / 2)
     espacio = GAME_HEIGHT / 4
-    tuberia_superior = Tuberia(tuberia_superior_image, tuberia_x, int(random_y), tuberia_width, tuberia_height)
-    tuberias.append(tuberia_superior)
-    tuberia_inferior = Tuberia(tuberia_inferior_image, tuberia_x, int(tuberia_superior.y + tuberia_superior.height + espacio), tuberia_width, tuberia_height)
-    tuberias.append(tuberia_inferior)
+    superior = Tuberia(tuberia_superior_image, tuberia_x, int(random_y), tuberia_width, tuberia_height)
+    inferior = Tuberia(tuberia_inferior_image, tuberia_x, int(random_y + tuberia_height + espacio), tuberia_width, tuberia_height)
+    tuberias.append(superior)
+    tuberias.append(inferior)
 
 def move():
     global puntuacion, estado, record
@@ -213,13 +245,14 @@ def move():
             estado = PERDIDO
             return
 
+    # eliminar tuberías fuera de pantalla
     while len(tuberias) > 0 and tuberias[0].x < -tuberia_width:
         tuberias.pop(0)
 
 # -------------------- Dibujado --------------------
 def draw_menu(window):
     window.blit(background_image, (0, 0))
-    title = font_title.render(" FLAPPY BIRD", True, "white")
+    title = font_title.render(" FLAPPY BIRD", True, (255,255,255))
     window.blit(title, (40, 100))
 
     # Botón jugar
@@ -227,35 +260,36 @@ def draw_menu(window):
     button_play.draw(window)
 
     # Texto y botones de modo
-    text_select = font_small.render("Modo de juego (elige uno):", True, "white")
+    text_select = font_small.render("Modo de juego (elige uno):", True, (255,255,255))
     window.blit(text_select, (30, 160))
     mode_btn_yellow.draw(window)
     mode_btn_blue.draw(window)
     mode_btn_inter.draw(window)
 
     # Mostrar modo actual abajo
-    mode_text = font_small.render(f"Modo actual: {modo_seleccionado}", True, "white")
+    mode_text = font_small.render(f"Modo actual: {modo_seleccionado}", True, (255,255,255))
     window.blit(mode_text, (20, 260))
 
 def draw_game(window):
     window.blit(background_image, (0, 0))
     for tuberia in tuberias:
-        window.blit(tuberia.img, tuberia)
-    window.blit(bird.img, bird.rect)
-    text_render = font_score.render(str(int(puntuacion)), True, "white")
+        # blit acepta rect, así se posiciona correctamente
+        window.blit(tuberia.img, (tuberia.x, tuberia.y))
+    bird.draw(window)
+    text_render = font_score.render(str(int(puntuacion)), True, (255,255,255))
     window.blit(text_render, (5, 0))
-    record_text = font_small.render(f"Récord: {record}", True, "white")
+    record_text = font_small.render(f"Récord: {record}", True, (255,255,255))
     window.blit(record_text, (GAME_WIDTH - 120, 8))
 
 def draw_game_over(window):
     draw_game(window)
     font_over = pygame.font.SysFont("Comic Sans MS", 45)
-    text = font_over.render("¡PERDISTE!", True, "red")
+    text = font_over.render("¡PERDISTE!", True, (255,0,0))
     window.blit(text, (60, 150))
     font_info = pygame.font.SysFont("Comic Sans MS", 28)
-    punt_text = font_info.render(f"Puntuación: {int(puntuacion)}", True, "white")
+    punt_text = font_info.render(f"Puntuación: {int(puntuacion)}", True, (255,255,255))
     window.blit(punt_text, (80, 220))
-    rec_text = font_info.render(f"Récord: {record}", True, "white")
+    rec_text = font_info.render(f"Récord: {record}", True, (255,255,255))
     window.blit(rec_text, (80, 260))
     button_play.rect.y = 320
     button_play.draw(window)
@@ -263,9 +297,9 @@ def draw_game_over(window):
 def draw_pause(window):
     draw_game(window)
     font_pause = pygame.font.SysFont("Comic Sans MS", 60)
-    text = font_pause.render("PAUSA", True, "yellow")
+    text = font_pause.render("PAUSA", True, (255,255,0))
     window.blit(text, (90, 260))
-    hint = font_small.render("Presiona P para continuar", True, "white")
+    hint = font_small.render("Presiona P para continuar", True, (255,255,255))
     window.blit(hint, (70, 330))
 
 # -------------------- Loop principal --------------------
@@ -285,13 +319,17 @@ while running:
 
         # Timer de animación: actualizar índice y la imagen del pájaro
         if event.type == ANIM_EVENT:
-            indice_sprite = (indice_sprite + 1) % len(sprites_bird)
-            bird.img = sprites_bird[indice_sprite]
+            if len(sprites_bird) > 0:
+                indice_sprite = (indice_sprite + 1) % len(sprites_bird)
+                # actualizar la imagen del pájaro manteniendo referencia
+                try:
+                    bird.img = sprites_bird[indice_sprite]
+                except Exception:
+                    pass
 
         # Clicks en menú y pantalla de perdido
-        if estado == MENU or estado == PERDIDO:
+        if estado in (MENU, PERDIDO):
             if event.type == pygame.MOUSEBUTTONDOWN:
-                # Jugar
                 if button_play.is_clicked(mouse_pos, event):
                     if estado == MENU:
                         reiniciar_juego()
@@ -318,7 +356,7 @@ while running:
                         indice_sprite = 0
                         bird.img = sprites_bird[indice_sprite]
 
-        # Teclado: saltar, pausa, volver al menú
+        # Teclado
         if event.type == pygame.KEYDOWN:
             if event.key in (pygame.K_SPACE, pygame.K_x, pygame.K_UP):
                 if estado == MENU:
@@ -334,7 +372,7 @@ while running:
                     estado = PAUSA
                 elif estado == PAUSA:
                     estado = JUGANDO
-            # Tecla C: alternar rápidamente entre modos (opcional)
+            # Tecla C: alternar rápidamente entre modos
             if event.key == pygame.K_c:
                 if modo_seleccionado == "yellow":
                     modo_seleccionado = "blue"
