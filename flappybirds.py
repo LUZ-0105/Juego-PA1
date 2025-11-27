@@ -148,7 +148,7 @@ def reiniciar_juego():
 # =============================
 def draw_menu(window):
     window.blit(background_image, (0, 0))
-    font_title = pygame.font.Font("FlappyBirdy.ttf", 40)
+    font_title = pygame.font.Font("FlappyBirdy.ttf" , 80)
     title = font_title.render(" FLAPPY BIRD", True, "white")
     window.blit(title, (40, 100))
     button_play.draw(window)
@@ -171,7 +171,7 @@ def draw_game(window):
 
 def draw_game_over(window):
     draw_game(window)
-    font_over = pygame.font.Font("FlappyBirdy.ttf", 45)
+    font_over = pygame.font.Font("FlappyBirdy.ttf", 80)
     text = font_over.render("GAME OVER ", True, "red")
     window.blit(text, (60, 200))
     button_play.rect.y = 320
